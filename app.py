@@ -15,7 +15,7 @@ st.title("🧳 Zajednička Evidencija Putovanja")
 st.write("Podaci se sinhronizuju uživo za sve korisnike putem Google Sheets-a.")
 
 # URL tvoje Google tabele (ZAMENI OVDE SA TVOJIM LINKOM)
-URL_TABELE = "LINK_TVOJE_GOOGLE_TABELE"
+URL_TABELE = "https://docs.google.com/spreadsheets/d/1_tPIodY5cXjJFzNfsYccHDWqhOMUQUM-ugZlHqeBTCE/edit?usp=sharing"
 
 # Funkcija za izvlačenje ID-ja tabele iz linka
 def izvuci_id_tabele(url):
