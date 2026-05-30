@@ -10,12 +10,17 @@ from reportlab.lib import colors
 # Podešavanje stranice i naslova aplikacije
 st.set_page_config(page_title="Evidencija Putnika", layout="wide")
 
-# --- PODEŠAVANJE POZADINSKE SLIKE ---
-# Ovde zameni URL sa linkom slike koju ti želiš
+# --- PODEŠAVANJE POZADINSKE SLIKE I SAKRIVANJE TOOLBAR-A ---
 URL_POZADINE = "https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_150416-scaled.jpg"
 
 css_za_pozadinu = f"""
 <style>
+/* Kompletno sklanjanje gornjeg toolbar-a (Share, GitHub, tri tačkice) */
+header[data-testid="stHeader"] {{
+    display: none !important;
+}}
+
+/* Postavljanje fiksne pozadinske slike */
 .stApp {{
     background-image: url("https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_150416-scaled.jpg");
     background-size: cover;
@@ -24,11 +29,12 @@ css_za_pozadinu = f"""
     background-attachment: fixed;
 }}
 
-/* Ovaj deo čini da tekst bude čitljiviji tako što dodaje blagu providnu belu pozadinu oko formi */
+/* Svetla, blago providna pozadina oko teksta i tabela za maksimalnu čitljivost */
 [data-testid="stVerticalBlock"] {{
-    background-color: rgba(255, 255, 255, 0.85);
+    background-color: rgba(255, 255, 255, 0.90);
     padding: 20px;
     border-radius: 10px;
+    color: #31333F !important; /* Tamno sivi tekst koji je standard za svetlu temu */
 }}
 </style>
 """
