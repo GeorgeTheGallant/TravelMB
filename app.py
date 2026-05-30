@@ -10,6 +10,30 @@ from reportlab.lib import colors
 # Podešavanje stranice i naslova aplikacije
 st.set_page_config(page_title="Evidencija Putnika", layout="wide")
 
+# --- PODEŠAVANJE POZADINSKE SLIKE ---
+# Ovde zameni URL sa linkom slike koju ti želiš
+URL_POZADINE = "https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_150416-scaled.jpg"
+
+css_za_pozadinu = f"""
+<style>
+.stApp {{
+    background-image: url("{https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_150416-scaled.jpg}");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}}
+
+/* Ovaj deo čini da tekst bude čitljiviji tako što dodaje blagu providnu belu pozadinu oko formi */
+[data-testid="stVerticalBlock"] {{
+    background-color: rgba(255, 255, 255, 0.85);
+    padding: 20px;
+    border-radius: 10px;
+}}
+</style>
+"""
+st.markdown(css_za_pozadinu, unsafe_allow_html=True)
+
 # --- JEDNOSTAVNA AUTENTIFIKACIJA ---
 if "autentifikovan" not in st.session_state:
     st.session_state.autentifikovan = False
