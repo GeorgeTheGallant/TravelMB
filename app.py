@@ -6,11 +6,66 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
+import smtplib
+from email.mime.text import MIMEText
+from datetime import datetime
 
-# Podešavanje stranice i naslova aplikacije
+# --- 1. PROVERA TAJNIH PROLAZA ZA CRON-JOB (MORA BITI NA SAMOM VRHU!) ---
+query_params = st.query_params
+
+# Pomoćna funkcija za slanje mejla (mora biti definisana na vrhu zbog robota)
+def posalji_email_direktno(naslov, poruka_tekst):
+    try:
+        sender = st.secrets["EMAIL_SENDER"]
+        password = st.secrets["EMAIL_PASSWORD"]
+        primaoci = [m.strip() for m in st.secrets["EMAIL_PRIMAOCI"].split(",")]
+        
+        msg = MIMEText(poruka_tekst)
+        msg['Subject'] = naslov
+        msg['From'] = sender
+        msg['To'] = ", ".join(primaoci)
+        
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(sender, password)
+            server.sendmail(sender, primaoci, msg.as_string())
+        return True
+    except:
+        return False
+
+# Okidač za jutro (06:45h)
+if query_params.get("okidac") == "jutro":
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        repo_name = st.secrets["REPO_NAME"]
+        g = Github(token)
+        repo = g.get_repo(repo_name)
+        file_content = repo.get_contents("baza.csv")
+        data_str = file_content.decoded_content.decode("utf-8")
+        df = pd.read_csv(StringIO(data_str))
+        
+        danasnji_datum = datetime.now().strftime("%d.%m.%Y")
+        red_danas = df[df["Datum"] == danasnji_datum]
+        
+        if not red_danas.empty and red_danas.iloc[0]["Polazak"] == "Da":
+            putnici = red_danas.iloc[0]["Imena putnika"]
+            tekst_mejla = f"Dobro jutro! Podsetnik da je jutarnji polazak zakazan za 07:00h.\n\nDanas putuju: {putnici}\n\nSpremite se na vreme! 🚌"
+            posalji_email_direktno("⏰ Podsetnik za polazak - 07:00h", tekst_mejla)
+    except:
+        pass
+    st.stop()  # Odmah prekida rad i zaobilazi login ekran!
+
+# Okidač za petak (13:00h)
+if query_params.get("okidac") == "petak":
+    try:
+        tekst_petak = "Dobar dan!\n\nDa li ste popunili tabelu putovanja za ovu sedmicu?\n\nMolimo vas da unesete podatke na vreme kako bismo imali tačnu evidenciju.\n\nLink aplikacije: https://travelmb.streamlit.app"
+        posalji_email_direktno("📅 Podsetnik: Popunjavanje tabele za ovu sedmicu", tekst_petak)
+    except:
+        pass
+    st.stop()  # Odmah prekida rad!
+
+# --- 2. VIZUELNO PODEŠAVANJE STRANICE I ZAKLJUČAVANJE LIGHT MODA ---
 st.set_page_config(page_title="Evidencija Putnika", layout="wide")
 
-# --- PODEŠAVANJE POZADINSKE SLIKE I SAKRIVANJE TOOLBAR-A ---
 URL_POZADINE = "https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_150416-scaled.jpg"
 
 css_za_pozadinu = f"""
@@ -29,61 +84,53 @@ header[data-testid="stHeader"] {{
     background-attachment: fixed;
 }}
 
-/* Svetla, blago providna pozadina oko teksta i tabela za maksimalnu čitljivost */
+/* Svetla, blago providna pozadina oko teksta i tabela */
 [data-testid="stVerticalBlock"] {{
     background-color: rgba(255, 255, 255, 0.90);
     padding: 20px;
     border-radius: 10px;
-    color: #31333F !important; /* Tamno sivi tekst koji je standard za svetlu temu */
+    color: #31333F !important;
 }}
 </style>
 """
 st.markdown(css_za_pozadinu, unsafe_allow_html=True)
 
-# --- JEDNOSTAVNA AUTENTIFIKACIJA ---
+# --- 3. JEDNOSTAVNA AUTENTIFIKACIJA ---
 if "autentifikovan" not in st.session_state:
     st.session_state.autentifikovan = False
 
 def proveri_lozinku():
     if st.session_state["unesena_lozinka"] == st.secrets["APLIKACIJA_PASSWORD"]:
         st.session_state.autentifikovan = True
-        del st.session_state["unesena_lozinka"]  # Brišemo lozinku iz memorije radi bezbednosti
+        del st.session_state["unesena_lozinka"]
     else:
         st.session_state.autentifikovan = False
         st.error("❌ Pogrešna lozinka! Pokušajte ponovo.")
 
-# Ako korisnik nije ulogovan, prikazujemo samo formu za login
 if not st.session_state.autentifikovan:
     st.markdown("<h2 style='text-align: center;'>🔒 Zaštićena Zona</h2>", unsafe_allow_html=True)
     st.write("")
     
-    # Centrirana forma za unos lozinke
     kol_oko1, kol_sredina, kol_oko2 = st.columns([1, 2, 1])
     with kol_sredina:
-        st.text_input(
-            "Unesite zajedničku lozinku za pristup aplikaciji:", 
-            type="password", 
-            key="unesena_lozinka",
-            on_change=proveri_lozinku
-        )
+        st.text_input("Unesite zajedničku lozinku za pristup aplikaciji:", type="password", key="unesena_lozinka", on_change=proveri_lozinku)
         if st.button("Pristupi aplikaciji", type="primary", use_container_width=True):
             proveri_lozinku()
             if st.session_state.autentifikovan:
                 st.rerun()
-    st.stop() # Zaustavlja izvršavanje ostatka koda ako lozinka nije tačna
+    st.stop()
 
-# --- OSTATAK APLIKACIJE (OTKLJUČAN) ---
+# --- 4. GLAVNI DEO APLIKACIJE (OTKLJUČAN) ---
 st.title("🧳 Zajednička Evidencija Putovanja")
 st.write("Podaci su sinhronizovani uživo za sve uređaje preko centralne baze.")
 
-# Povezivanje sa GitHub-om preko Secrets-a
 try:
     token = st.secrets["GITHUB_TOKEN"]
     repo_name = st.secrets["REPO_NAME"]
     g = Github(token)
     repo = g.get_repo(repo_name)
 except Exception as e:
-    st.error("Problem sa Streamlit Secrets podešavanjima za GitHub. Proverite TOKEN i REPO_NAME.")
+    st.error("Problem sa Streamlit Secrets podešavanjima za GitHub.")
 
 def ucitaj_podatke():
     try:
@@ -111,12 +158,10 @@ def sacuvaj_podatke(df):
 
 df_baza = ucitaj_podatke()
 
-# Inicijalizacija LISTE PUTNIKA u sesiji
 if "lista_putnika" not in st.session_state:
     st.session_state.lista_putnika = ["Ksenija", "Radislav", "Nikola", "Stefan", "Ivan", "Miroslav", "Branko", "Milica"]
 
 st.subheader("📝 Unos podataka i upravljanje listom putnika")
-
 kolona_levo, kolona_desno = st.columns([1, 2])
 
 with kolona_levo:
@@ -170,12 +215,7 @@ with kolona_desno:
             datum_str = datum.strftime("%d.%m.%Y")
             spojena_imena = ", ".join(selektovani_putnici)
             
-            novi_red = pd.DataFrame([{
-                "Datum": datum_str,
-                "Imena putnika": spojena_imena,
-                "Polazak": polak_status,
-                "Odlazak": odlazak_status
-            }])
+            novi_red = pd.DataFrame([{"Datum": datum_str, "Imena putnika": spojena_imena, "Polazak": polak_status, "Odlazak": odlazak_status}])
             
             if datum_str in df_baza["Datum"].values:
                 tabela_bez_tog_dana = df_baza[df_baza["Datum"] != datum_str]
@@ -185,10 +225,15 @@ with kolona_desno:
             
             df_baza = df_baza.sort_values(by="Datum").reset_index(drop=True)
             sacuvaj_podatke(df_baza)
-            st.success("Podaci uspešno osveženi u zajedničkoj bazi!")
+            
+            # NOTIFIKACIJA O RUČNOM UNOSU/IZMENI
+            tekst_notifikacije = f"U tabelu je uneta/izmenjena stavka za datum {datum_str}.\nPutnici: {spojena_imena}\nPolazak: {polak_status} | Odlazak: {odlazak_status}"
+            posalji_email_direktno("🔔 Izmena u tabeli putovanja", tekst_notifikacije)
+            
+            st.success("Podaci uspešno osveženi i email obaveštenje je poslato!")
             st.rerun()
 
-# --- PRIKAZ TABELE ---
+# --- 5. PRIKAZ TABELE I KOREKCIJE ---
 st.subheader("📊 Tabela putovanja (Sinhronizovano uživo)")
 
 if not df_baza.empty:
@@ -229,9 +274,12 @@ if not df_baza.empty:
                 
                 df_baza = df_baza.sort_values(by="Datum").reset_index(drop=True)
                 sacuvaj_podatke(df_baza)
+                
+                # NOTIFIKACIJA O IZBACIVANJU
+                posalji_email_direktno("⚠️ Izmena: Putnik uklonjen", f"Iz baze za datum {izabran_dan_korekcija} uklonjen je putnik: {izabran_putnik_za_izbacivanje}")
                 st.rerun()
 
-    # --- POTVRDA BRISANJA ---
+    # --- POTVRDA BRISANJA CELE TABELE ---
     st.write("---")
     if "prikazi_potvrdu" not in st.session_state:
         st.session_state.prikazi_potvrdu = False
@@ -249,6 +297,10 @@ if not df_baza.empty:
                 if potvrda_cb:
                     df_prazan = pd.DataFrame(columns=["Datum", "Imena putnika", "Polazak", "Odlazak"])
                     sacuvaj_podatke(df_prazan)
+                    
+                    # NOTIFIKACIJA O BRISANJU CELE TABELE
+                    posalji_email_direktno("🚨 ALARM: Cela tabela je ispražnjena!", "Korisnik je upravo resetovao i ispraznio kompletnu tabelu putovanja.")
+                    
                     st.session_state.prikazi_potvrdu = False
                     st.rerun()
         with kol_odustani:
