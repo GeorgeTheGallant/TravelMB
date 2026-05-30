@@ -10,7 +10,7 @@ from reportlab.lib import colors
 st.set_page_config(page_title="Evidencija Putnika", layout="wide")
 
 st.title("🧳 Pametna Aplikacija za Evidenciju Putovanja")
-st.write("Štiklirajte putnike i statuse. Upravljajte listom putnika direktno sa desne strane (maksimalno 15).")
+st.write("Štiklirajte putnike i statuse. Unos za isti datum će dopisati nove putnike u postojeći red.")
 
 # 1) Inicijalizacija baze podataka (tabela putovanja)
 if "podaci_o_putovanjima" not in st.session_state:
@@ -22,13 +22,12 @@ if "podaci_o_putovanjima" not in st.session_state:
 if "lista_putnika" not in st.session_state:
     st.session_state.lista_putnika = ["Ksenija", "Radislav", "Nikola", "Stefan", "Ivan", "Miroslav", "Branko", "Milica"]
 
-# --- GLAVNI INTERFEJS: UPRAVLJANJE PUTNICIMA I UNOS ---
 st.subheader("📝 Unos podataka i upravljanje listom putnika")
 
-# Delimo ekran na dve glavne kolone (Levo: Checkbox lista, Desno: Kontrole i detalji rute)
+# Delimo ekran na dve glavne kolone
 kolona_levo, kolona_desno = st.columns([1, 2])
 
-# LEVA KOLONA: Dinamički prikaz checkbox-ova iz session_state-a
+# LEVA KOLONA: Dinamički prikaz checkbox-ova
 with kolona_levo:
     st.write("**Izaberite putnike:**")
     selektovani_putnici = []
@@ -36,9 +35,8 @@ with kolona_levo:
         if st.checkbox(putnik, key=f"cb_{putnik}"):
             selektovani_putnici.append(putnik)
 
-# DESNA KOLONA: Podeljena na upravljanje ljudima (gore) i unos rute (dole)
+# DESNA KOLONA: Upravljanje ljudima i unos rute
 with kolona_desno:
-    # Iskorišćavanje desnog prostora za Dodavanje/Brisanje
     st.write("**⚙️ Upravljanje listom putnika (Trenutno: {}/15):**".format(len(st.session_state.lista_putnika)))
     
     kolona_dodaj, kolona_obrisi = st.columns(2)
@@ -58,7 +56,6 @@ with kolona_desno:
                 st.rerun()
                 
     with kolona_obrisi:
-        # Padajući meni za izbor putnika kojeg brišemo iz sistema
         putnik_za_brisanje = st.selectbox("❌ Ukloni putnika sa liste:", ["-- Izaberi --"] + st.session_state.lista_putnika)
         if st.button("Potvrdi brisanje"):
             if putnik_za_brisanje != "-- Izaberi --":
@@ -68,7 +65,7 @@ with kolona_desno:
             else:
                 st.error("Izaberite putnika kojeg želite da obrišete.")
 
-    st.write("---") # Razdelnik unutar desne kolone
+    st.write("---") 
     
     # DETALJI PUTOVANJA
     st.write("**📅 Detalji putovanja:**")
@@ -83,32 +80,52 @@ with kolona_desno:
     
     st.write("") 
     
-    # Dugme za čuvanje u tabelu
+    # Dugme za pametno ažuriranje/spajanje
     if st.button("Dodaj / Izmeni u tabeli", type="primary"):
         if not selektovani_putnici:
             st.error("Morate štiklirati barem jednog putnika na levoj strani!")
         else:
             datum_str = datum.strftime("%d.%m.%Y")
-            spojena_imena = ", ".join(selektovani_putnici)
-            
-            novi_red = pd.DataFrame([{
-                "Datum": datum_str,
-                "Imena putnika": spojena_imena,
-                "Polazak": polazak_status,
-                "Odlazak": odlazak_status
-            }])
-            
             postojeca_tabela = st.session_state.podaci_o_putovanjima
             
-            # Logika prepisivanja ako datum postoji
+            # --- NOVA LOGIKA ZA SPAJANJE PUTNIKA ---
             if datum_str in postojeca_tabela["Datum"].values:
-                tabela_bez_starog_dana = postojeca_tabela[postojeca_tabela["Datum"] != datum_str]
-                st.session_state.podaci_o_putovanjima = pd.concat([tabela_bez_starog_dana, novi_red], ignore_index=True)
-                st.warning(f"Podaci za datum {datum_str} su ažurirani! Stari red je zamenjen novim.")
+                # 1. Izvuci trenutni red za taj datum
+                stari_red = postojeca_tabela[postojeca_tabela["Datum"] == datum_str].iloc[0]
+                
+                # 2. Razbij trenutna imena u listu i spoji ih sa novim štikliranim imenima
+                stari_putnici = [p.strip() for p in stari_red["Imena putnika"].split(",")]
+                svi_putnici_set = list(set(stari_putnici + selektovani_putnici)) # set uklanja duplikate
+                spojena_imena = ", ".join(svi_putnici_set)
+                
+                # 3. Pametno ažuriranje statusa: ako je bilo gde "Da", ostaje "Da"
+                konacni_polazak = "Da" if (stari_red["Polazak"] == "Da" or polazak_status == "Da") else "Ne"
+                konacni_odlazak = "Da" if (stari_red["Odlazak"] == "Da" or odlazak_status == "Da") else "Ne"
+                
+                # 4. Obriši stari red i ubaci ažurirani
+                tabela_bez_tog_dana = postojeca_tabela[postojeca_tabela["Datum"] != datum_str]
+                azurirani_red = pd.DataFrame([{
+                    "Datum": datum_str,
+                    "Imena putnika": spojena_imena,
+                    "Polazak": konacni_polazak,
+                    "Odlazak": konacni_odlazak
+                }])
+                
+                st.session_state.podaci_o_putovanjima = pd.concat([tabela_bez_tog_dana, azurirani_red], ignore_index=True)
+                st.warning(f"Dodati novi putnici za datum {datum_str}! Lista za taj dan je uspešno dopunjena.")
             else:
+                # Ako je datum nov, samo ga regularno dodajemo na kraj
+                spojena_imena = ", ".join(selektovani_putnici)
+                novi_red = pd.DataFrame([{
+                    "Datum": datum_str,
+                    "Imena putnika": spojena_imena,
+                    "Polazak": polazak_status,
+                    "Odlazak": odlazak_status
+                }])
                 st.session_state.podaci_o_putovanjima = pd.concat([postojeca_tabela, novi_red], ignore_index=True)
                 st.success("Podaci uspešno dodati u tabelu!")
             
+            # Sortiranje po datumu
             st.session_state.podaci_o_putovanjima = st.session_state.podaci_o_putovanjima.sort_values(by="Datum").reset_index(drop=True)
 
 # --- INTERAKTIVNI PRIKAZ TABELE ---
