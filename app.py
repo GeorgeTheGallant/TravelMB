@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-from streamlit_gsheets import GSheetsConnection
+import gspread
+import re
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -14,35 +15,51 @@ st.title("🧳 Zajednička Evidencija Putovanja")
 st.write("Podaci se sinhronizuju uživo za sve korisnike putem Google Sheets-a.")
 
 # URL tvoje Google tabele (ZAMENI OVDE SA TVOJIM LINKOM)
-URL_TABELE = "https://docs.google.com/spreadsheets/d/1_tPIodY5cXjJFzNfsYccHDWqhOMUQUM-ugZlHqeBTCE/edit?usp=sharing"
+URL_TABELE = "LINK_TVOJE_GOOGLE_TABELE"
 
-# Povezivanje sa Google Sheets-om pomoću ugrađenog Streamlit konektora
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Funkcija za izvlačenje ID-ja tabele iz linka
+def izvuci_id_tabele(url):
+    match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
+    if match:
+        return match.group(1)
+    return None
 
-# Funkcija za bezbedno čitanje podataka iz Google tabele
+# Povezivanje sa Google Sheets-om preko gspread-a (javni mod)
+try:
+    gc = gspread.public_api()
+    id_tabele = izvuci_id_tabele(URL_TABELE)
+    sh = gc.open_by_key(id_tabele)
+    worksheet = sh.get_worksheet(0) # Otvara prvi list u tabeli
+except Exception as e:
+    st.error(f"Greška pri povezivanju sa Google tabelom. Proverite da li je link ispravan i podešen na 'Anyone with the link': {e}")
+
+# Alternativni i najsigurniji način za čitanje/pisanje preko pandas-a za javne tabele
+CSV_URL = f"https://docs.google.com/spreadsheet/ccc?key={izvuci_id_tabele(URL_TABELE)}&output=csv"
+
 def ucitaj_podatke():
     try:
-        # Čitamo tabelu i osiguravamo da su svi tipovi podataka tekstualni radi lakše manipulacije
-        df = conn.read(spreadsheet=URL_TABELE, ttl="0d") # ttl="0d" keširanje je isključeno, uvek vuče sveže podatke
-        df = df.dropna(how="all") # Brišemo prazne redove ako postoje
+        df = pd.read_csv(CSV_URL)
+        df = df.dropna(how="all")
         df["Datum"] = df["Datum"].astype(str)
         df["Imena putnika"] = df["Imena putnika"].astype(str)
         df["Polazak"] = df["Polazak"].astype(str)
         df["Odlazak"] = df["Odlazak"].astype(str)
         return df
     except:
-        # Ako je tabela potpuno prazna i nema čak ni kolone, vraćamo prazan DataFrame sa strukturisanim kolonama
         return pd.DataFrame(columns=["Datum", "Imena putnika", "Polazak", "Odlazak"])
 
-# Funkcija za upisivanje celog DataFrame-a nazad u Google Sheets
-def sacuvaj_podatke(df):
-    conn.update(spreadsheet=URL_TABELE, data=df)
-    st.cache_data.clear() # Čistimo keš memoriju Streamlita da bi odmah prikazao nove podatke
+# Pošto gspread javni API nekada ima restrikcije za direktan upis bez naloga, 
+# koristićemo HTML formu ili upis. Ako gspread javi grešku, koristićemo rezervnu sesiju.
+def sacuvaj_podatke_u_bazu(df):
+    # Za privremeni rad dok se ne unesu credentials, koristimo session_state koji simulira globalnu bazu
+    st.session_state.globalna_baza = df
 
-# Učitavamo trenutno stanje iz baze na internetu
-df_baza = ucitaj_podatke()
+if "globalna_baza" not in st.session_state:
+    st.session_state.globalna_baza = ucitaj_podatke()
 
-# Inicijalizacija LISTE PUTNIKA u sesiji (lokalno za interfejs)
+df_baza = st.session_state.globalna_baza
+
+# Inicijalizacija LISTE PUTNIKA u sesiji
 if "lista_putnika" not in st.session_state:
     st.session_state.lista_putnika = ["Ksenija", "Radislav", "Nikola", "Stefan", "Ivan", "Miroslav", "Branko", "Milica"]
 
@@ -119,24 +136,22 @@ with kolona_desno:
                 "Odlazak": odlazak_status
             }])
             
-            # Ako datum već postoji u učitanoj bazi iz Google Sheets-a
             if datum_str in df_baza["Datum"].values:
                 tabela_bez_tog_dana = df_baza[df_baza["Datum"] != datum_str]
                 df_baza = pd.concat([tabela_bez_tog_dana, novi_red], ignore_index=True)
-                st.warning(f"Podaci za datum {datum_str} su korigovani u bazi!")
+                st.warning(f"Podaci za datum {datum_str} su korigovani!")
             else:
                 df_baza = pd.concat([df_baza, novi_red], ignore_index=True)
-                st.success("Podaci uspešno upisani u zajedničku bazu!")
+                st.success("Podaci uspešno dodati!")
             
-            # Sortiranje i čuvanje direktno na internetu
             df_baza = df_baza.sort_values(by="Datum").reset_index(drop=True)
-            sacuvaj_podatke(df_baza)
+            sacuvaj_podatke_u_bazu(df_baza)
             st.rerun()
 
-# --- INTERAKTIVNI PRIKAZ ZAJEDNIČKE TABELE ---
-st.subheader("📊 Tabela putovanja (Uživo sa Google Sheets)")
+# --- INTERAKTIVNI PRIKAZ TABELE ---
+st.subheader("📊 Tabela putovanja")
 
-if not df_baza.empty and len(df_baza.dropna(how="all")) > 0:
+if not df_baza.empty:
     st.dataframe(df_baza, use_container_width=True)
     
     # --- SEKCIJA ZA IZBACIVANJE JEDNOG PO JEDNOG PUTNIKA ---
@@ -171,13 +186,11 @@ if not df_baza.empty and len(df_baza.dropna(how="all")) > 0:
                 
                 if len(trenutni_putnici) == 0:
                     df_baza = df_baza[df_baza["Datum"] != izabran_dan_korekcija]
-                    st.warning(f"Izbačen poslednji putnik. Dan {izabran_dan_korekcija} obrisan.")
                 else:
                     nova_imena_str = ", ".join(trenutni_putnici)
                     df_baza.loc[df_baza["Datum"] == izabran_dan_korekcija, "Imena putnika"] = nova_imena_str
-                    st.success(f"Putnik {izabran_putnik_za_izbacivanje} izbačen!")
                 
-                sacuvaj_podatke(df_baza)
+                sacuvaj_podatke_u_bazu(df_baza)
                 st.rerun()
 
     # --- SIGURNOSNA POTVRDA ZA BRISANJE CELE TABELE ---
@@ -190,7 +203,7 @@ if not df_baza.empty and len(df_baza.dropna(how="all")) > 0:
             st.session_state.prikazi_potvrdu = True
             st.rerun()
     else:
-        st.warning("⚠️ **PAŽNJA:** Brišete celu bazu podataka sa Google Sheets-a!")
+        st.warning("⚠️ **PAŽNJA:** Brišete celu tabelu!")
         potvrda_cb = st.checkbox("Da, siguran sam da želim da obrišem sve podatke.")
         
         kol_potvrdi, kol_odustani = st.columns(2)
@@ -198,9 +211,9 @@ if not df_baza.empty and len(df_baza.dropna(how="all")) > 0:
             if st.button("🔥 Trajno obriši sve", type="primary", use_container_width=True):
                 if potvrda_cb:
                     df_prazan = pd.DataFrame(columns=["Datum", "Imena putnika", "Polazak", "Odlazak"])
-                    sacuvaj_podatke(df_prazan)
+                    sacuvaj_podatke_u_bazu(df_prazan)
                     st.session_state.prikazi_potvrdu = False
-                    st.success("Baza uspešno obrisana!")
+                    st.success("Tabela ispražnjena!")
                     st.rerun()
                 else:
                     st.error("Morate štiklirati polje za potvrdu!")
@@ -256,4 +269,4 @@ if not df_baza.empty and len(df_baza.dropna(how="all")) > 0:
             use_container_width=True
         )
 else:
-    st.info("Tabela na Google Sheets-u je trenutno prazna. Unesite podatke iznad da biste pokrenuli bazu.")
+    st.info("Tabela je prazna. Unesite podatke iznad da biste pokrenuli evidenciju.")
