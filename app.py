@@ -10,6 +10,39 @@ from reportlab.lib import colors
 # Podešavanje stranice i naslova aplikacije
 st.set_page_config(page_title="Evidencija Putnika", layout="wide")
 
+# --- JEDNOSTAVNA AUTENTIFIKACIJA ---
+if "autentifikovan" not in st.session_state:
+    st.session_state.autentifikovan = False
+
+def proveri_lozinku():
+    if st.session_state["unesena_lozinka"] == st.secrets["APLIKACIJA_PASSWORD"]:
+        st.session_state.autentifikovan = True
+        del st.session_state["unesena_lozinka"]  # Brišemo lozinku iz memorije radi bezbednosti
+    else:
+        st.session_state.autentifikovan = False
+        st.error("❌ Pogrešna lozinka! Pokušajte ponovo.")
+
+# Ako korisnik nije ulogovan, prikazujemo samo formu za login
+if not st.session_state.autentifikovan:
+    st.markdown("<h2 style='text-align: center;'>🔒 Zaštićena Zona</h2>", unsafe_allow_html=True)
+    st.write("")
+    
+    # Centrirana forma za unos lozinke
+    kol_oko1, kol_sredina, kol_oko2 = st.columns([1, 2, 1])
+    with kol_sredina:
+        st.text_input(
+            "Unesite zajedničku lozinku za pristup aplikaciji:", 
+            type="password", 
+            key="unesena_lozinka",
+            on_change=proveri_lozinku
+        )
+        if st.button("Pristupi aplikaciji", type="primary", use_container_width=True):
+            proveri_lozinku()
+            if st.session_state.autentifikovan:
+                st.rerun()
+    st.stop() # Zaustavlja izvršavanje ostatka koda ako lozinka nije tačna
+
+# --- OSTATAK APLIKACIJE (OTKLJUČAN) ---
 st.title("🧳 Zajednička Evidencija Putovanja")
 st.write("Podaci su sinhronizovani uživo za sve uređaje preko centralne baze.")
 
@@ -24,7 +57,6 @@ except Exception as e:
 
 def ucitaj_podatke():
     try:
-        # Pokušavamo da povučemo baza.csv sa GitHub-a
         file_content = repo.get_contents("baza.csv")
         data_str = file_content.decoded_content.decode("utf-8")
         df = pd.read_csv(StringIO(data_str))
@@ -35,7 +67,6 @@ def ucitaj_podatke():
         df["Odlazak"] = df["Odlazak"].astype(str)
         return df
     except:
-        # Ako fajl još ne postoji, vraćamo praznu tabelu
         return pd.DataFrame(columns=["Datum", "Imena putnika", "Polazak", "Odlazak"])
 
 def sacuvaj_podatke(df):
@@ -43,14 +74,11 @@ def sacuvaj_podatke(df):
     df.to_csv(csv_buffer, index=False)
     csv_data = csv_buffer.getvalue()
     try:
-        # Ako fajl postoji, ažuriramo ga
         file_content = repo.get_contents("baza.csv")
         repo.update_file("baza.csv", "Automatsko osvežavanje baze putnika", csv_data, file_content.sha)
     except:
-        # Ako fajl ne postoji, kreiramo ga prvi put
         repo.create_file("baza.csv", "Inicijalizacija baze putnika", csv_data)
 
-# Učitavanje trenutnog stanja baze sa GitHub-a (ttl=0 efekat)
 df_baza = ucitaj_podatke()
 
 # Inicijalizacija LISTE PUTNIKA u sesiji
@@ -167,7 +195,7 @@ if not df_baza.empty:
                     df_baza = df_baza[df_baza["Datum"] != izabran_dan_korekcija]
                 else:
                     nova_imena_str = ", ".join(trenutni_putnici)
-                    df_baza.loc[df_baza["Datum"] == izabales_dan_korekcija if 'izabales_dan_korekcija' in locals() else df_baza["Datum"] == izabran_dan_korekcija, "Imena putnika"] = nova_imena_str
+                    df_baza.loc[df_baza["Datum"] == izabran_dan_korekcija, "Imena putnika"] = nova_imena_str
                 
                 df_baza = df_baza.sort_values(by="Datum").reset_index(drop=True)
                 sacuvaj_podatke(df_baza)
