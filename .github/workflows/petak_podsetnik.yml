@@ -1,0 +1,28 @@
+name: Petkovni Email Podsetnik
+
+on:
+  schedule:
+    # 13:00h po našem vremenu (CET) u Letnjem računanju je 11:00h po UTC vremenu koje GitHub koristi.
+    # Ako pređemo na zimsko vreme (CET = UTC+1), poruka će stizati u 12:00h, što je takođe super.
+    - cron: '0 11 * * 5'
+  workflow_dispatch: # Ovo nam daje magično dugme da sami ručno pokrenemo test kad god želimo!
+
+jobs:
+  posalji-notifikaciju:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Preuzmi kod iz repozitorijuma
+        uses: actions/checkout@v3
+
+      - name: 2. Podesi Python na virtuelnoj masini
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 3. Izvrsi skriptu za slanje mejla
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_PRIMAOCI: ${{ secrets.EMAIL_PRIMAOCI }}
+        run: |
+          python obavesti.py
