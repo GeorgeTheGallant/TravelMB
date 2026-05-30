@@ -10,7 +10,7 @@ from reportlab.lib import colors
 st.set_page_config(page_title="Evidencija Putnika", layout="wide")
 
 st.title("🧳 Pametna Aplikacija za Evidenciju Putovanja")
-st.write("Štiklirajte putnike i statuse. Unos za isti datum će dopisati nove putnike u postojeći red.")
+st.write("Upravljajte putovanjima bez straha od grešaka. Jednim klikom izbacite putnika iz bilo kog dana.")
 
 # 1) Inicijalizacija baze podataka (tabela putovanja)
 if "podaci_o_putovanjima" not in st.session_state:
@@ -18,7 +18,7 @@ if "podaci_o_putovanjima" not in st.session_state:
         columns=["Datum", "Imena putnika", "Polazak", "Odlazak"]
     )
 
-# 2) Inicijalizacija LISTE PUTNIKA u sesiji (da bi bila promenljiva)
+# 2) Inicijalizacija LISTE PUTNIKA u sesiji
 if "lista_putnika" not in st.session_state:
     st.session_state.lista_putnika = ["Ksenija", "Radislav", "Nikola", "Stefan", "Ivan", "Miroslav", "Branko", "Milica"]
 
@@ -80,53 +80,33 @@ with kolona_desno:
     
     st.write("") 
     
-    # Dugme za pametno ažuriranje/spajanje
+    # Dugme za čuvanje i prepravku
     if st.button("Dodaj / Izmeni u tabeli", type="primary"):
         if not selektovani_putnici:
             st.error("Morate štiklirati barem jednog putnika na levoj strani!")
         else:
             datum_str = datum.strftime("%d.%m.%Y")
             postojeca_tabela = st.session_state.podaci_o_putovanjima
+            spojena_imena = ", ".join(selektovani_putnici)
             
-            # --- NOVA LOGIKA ZA SPAJANJE PUTNIKA ---
+            novi_red = pd.DataFrame([{
+                "Datum": datum_str,
+                "Imena putnika": spojena_imena,
+                "Polazak": polazak_status,
+                "Odlazak": odlazak_status
+            }])
+            
             if datum_str in postojeca_tabela["Datum"].values:
-                # 1. Izvuci trenutni red za taj datum
-                stari_red = postojeca_tabela[postojeca_tabela["Datum"] == datum_str].iloc[0]
-                
-                # 2. Razbij trenutna imena u listu i spoji ih sa novim štikliranim imenima
-                stari_putnici = [p.strip() for p in stari_red["Imena putnika"].split(",")]
-                svi_putnici_set = list(set(stari_putnici + selektovani_putnici)) # set uklanja duplikate
-                spojena_imena = ", ".join(svi_putnici_set)
-                
-                # 3. Pametno ažuriranje statusa: ako je bilo gde "Da", ostaje "Da"
-                konacni_polazak = "Da" if (stari_red["Polazak"] == "Da" or polazak_status == "Da") else "Ne"
-                konacni_odlazak = "Da" if (stari_red["Odlazak"] == "Da" or odlazak_status == "Da") else "Ne"
-                
-                # 4. Obriši stari red i ubaci ažurirani
                 tabela_bez_tog_dana = postojeca_tabela[postojeca_tabela["Datum"] != datum_str]
-                azurirani_red = pd.DataFrame([{
-                    "Datum": datum_str,
-                    "Imena putnika": spojena_imena,
-                    "Polazak": konacni_polazak,
-                    "Odlazak": konacni_odlazak
-                }])
-                
-                st.session_state.podaci_o_putovanjima = pd.concat([tabela_bez_tog_dana, azurirani_red], ignore_index=True)
-                st.warning(f"Dodati novi putnici za datum {datum_str}! Lista za taj dan je uspešno dopunjena.")
+                st.session_state.podaci_o_putovanjima = pd.concat([tabela_bez_tog_dana, novi_red], ignore_index=True)
+                st.warning(f"Podaci za datum {datum_str} su uspešno korigovani!")
             else:
-                # Ako je datum nov, samo ga regularno dodajemo na kraj
-                spojena_imena = ", ".join(selektovani_putnici)
-                novi_red = pd.DataFrame([{
-                    "Datum": datum_str,
-                    "Imena putnika": spojena_imena,
-                    "Polazak": polazak_status,
-                    "Odlazak": odlazak_status
-                }])
                 st.session_state.podaci_o_putovanjima = pd.concat([postojeca_tabela, novi_red], ignore_index=True)
                 st.success("Podaci uspešno dodati u tabelu!")
             
             # Sortiranje po datumu
             st.session_state.podaci_o_putovanjima = st.session_state.podaci_o_putovanjima.sort_values(by="Datum").reset_index(drop=True)
+            st.rerun()
 
 # --- INTERAKTIVNI PRIKAZ TABELE ---
 st.subheader("📊 Tabela putovanja")
@@ -135,7 +115,57 @@ df = st.session_state.podaci_o_putovanjima
 if not df.empty:
     st.dataframe(df, use_container_width=True)
     
-    if st.button("Isprazni celu tabelu"):
+    # --- NOVA SEKCIJA ZA IZBACIVANJE JEDNOG PO JEDNOG PUTNIKA ---
+    st.write("**🛠️ Brzo izbacivanje putnika iz tabele:**")
+    
+    kol_izb_dan, kol_izb_putnik, kol_izb_dugme = st.columns([2, 2, 1])
+    
+    with col_izb_dan:
+        sve_unete_pauze = df["Datum"].tolist()
+        izabran_dan_korekcija = st.selectbox("1) Izaberi datum u tabeli:", ["-- Izaberi datum --"] + sve_unete_pauze, key="sb_izb_dan")
+        
+    with col_izb_putnik:
+        lista_ljudi_tog_dana = ["-- Prvo izaberi datum --"]
+        
+        # Ako je korisnik izabrao validan datum, izvlačimo samo ljude koji su upisani tog dana
+        if izabran_dan_korekcija != "-- Izaberi datum --":
+            trenutni_red = df[df["Datum"] == izabran_dan_korekcija].iloc[0]
+            lista_ljudi_tog_dana = [p.strip() for p in trenutni_red["Imena putnika"].split(",")]
+            
+        izabran_putnik_za_izbacivanje = st.selectbox("2) Izaberi putnika za uklanjanje:", lista_ljudi_tog_dana, key="sb_izb_put")
+        
+    with col_izb_dugme:
+        st.write("  \n") # Poravnanje sa selectbox-ovima
+        if st.button("Izbaci", type="secondary", use_container_width=True):
+            if izabran_dan_korekcija == "-- Izaberi datum --":
+                st.error("Niste izabrali datum!")
+            elif izabran_putnik_za_izbacivanje in ["-- Prvo izaberi datum --", "-- Izaberi putnika --"]:
+                st.error("Niste izabrali putnika!")
+            else:
+                # 1. Uzmi trenutni red za taj dan
+                red_za_izmenu = df[df["Datum"] == izabran_dan_korekcija].iloc[0]
+                trenutni_putnici = [p.strip() for p in red_za_izmenu["Imena putnika"].split(",")]
+                
+                # 2. Izbaci selektovanog putnika iz liste
+                trenutni_putnici.remove(izabran_putnik_za_izbacivanje)
+                
+                # 3. Ako je izbačen POSLEDNJI putnik, brišemo ceo taj dan jer je prazan
+                if len(trenutni_putnici) == 0:
+                    st.session_state.podaci_o_putovanjima = df[df["Datum"] != izabran_dan_korekcija]
+                    st.warning(f"Izbačen je poslednji putnik. Red za datum {izabran_dan_korekcija} je obrisan.")
+                else:
+                    # Spoji preostale putnike i vrati ih nazad u tabelu
+                    nova_imena_str = ", ".join(trenutni_putnici)
+                    
+                    df.loc[df["Datum"] == izabran_dan_korekcija, "Imena putnika"] = nova_imena_str
+                    st.session_state.podaci_o_putovanjima = df
+                    st.success(f"Putnik {izabran_putnik_za_izbacivanje} je uspešno izbačen iz datuma {izabran_dan_korekcija}!")
+                
+                st.rerun()
+
+    # --- KOMPLETNO BRISANJE TABELE ---
+    st.write("  \n")
+    if st.button("💥 Isprazni celu tabelu", type="secondary"):
         st.session_state.podaci_o_putovanjima = pd.DataFrame(
             columns=["Datum", "Imena putnika", "Polazak", "Odlazak"]
         )
