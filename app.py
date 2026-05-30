@@ -115,10 +115,10 @@ df = st.session_state.podaci_o_putovanjima
 if not df.empty:
     st.dataframe(df, use_container_width=True)
     
-    # --- NOVA SEKCIJA ZA IZBACIVANJE JEDNOG PO JEDNOG PUTNIKA ---
+    # --- SEKCIJA ZA IZBACIVANJE JEDNOG PO JEDNOG PUTNIKA (Sada ispravljeno) ---
     st.write("**🛠️ Brzo izbacivanje putnika iz tabele:**")
     
-    kol_izb_dan, kol_izb_putnik, kol_izb_dugme = st.columns([2, 2, 1])
+    col_izb_dan, col_izb_putnik, col_izb_dugme = st.columns([2, 2, 1])
     
     with col_izb_dan:
         sve_unete_pauze = df["Datum"].tolist()
@@ -127,7 +127,6 @@ if not df.empty:
     with col_izb_putnik:
         lista_ljudi_tog_dana = ["-- Prvo izaberi datum --"]
         
-        # Ako je korisnik izabrao validan datum, izvlačimo samo ljude koji su upisani tog dana
         if izabran_dan_korekcija != "-- Izaberi datum --":
             trenutni_red = df[df["Datum"] == izabran_dan_korekcija].iloc[0]
             lista_ljudi_tog_dana = [p.strip() for p in trenutni_red["Imena putnika"].split(",")]
@@ -135,28 +134,23 @@ if not df.empty:
         izabran_putnik_za_izbacivanje = st.selectbox("2) Izaberi putnika za uklanjanje:", lista_ljudi_tog_dana, key="sb_izb_put")
         
     with col_izb_dugme:
-        st.write("  \n") # Poravnanje sa selectbox-ovima
+        st.write("  \n") 
         if st.button("Izbaci", type="secondary", use_container_width=True):
             if izabran_dan_korekcija == "-- Izaberi datum --":
                 st.error("Niste izabrali datum!")
             elif izabran_putnik_za_izbacivanje in ["-- Prvo izaberi datum --", "-- Izaberi putnika --"]:
                 st.error("Niste izabrali putnika!")
             else:
-                # 1. Uzmi trenutni red za taj dan
                 red_za_izmenu = df[df["Datum"] == izabran_dan_korekcija].iloc[0]
                 trenutni_putnici = [p.strip() for p in red_za_izmenu["Imena putnika"].split(",")]
                 
-                # 2. Izbaci selektovanog putnika iz liste
                 trenutni_putnici.remove(izabran_putnik_za_izbacivanje)
                 
-                # 3. Ako je izbačen POSLEDNJI putnik, brišemo ceo taj dan jer je prazan
                 if len(trenutni_putnici) == 0:
                     st.session_state.podaci_o_putovanjima = df[df["Datum"] != izabran_dan_korekcija]
                     st.warning(f"Izbačen je poslednji putnik. Red za datum {izabran_dan_korekcija} je obrisan.")
                 else:
-                    # Spoji preostale putnike i vrati ih nazad u tabelu
                     nova_imena_str = ", ".join(trenutni_putnici)
-                    
                     df.loc[df["Datum"] == izabran_dan_korekcija, "Imena putnika"] = nova_imena_str
                     st.session_state.podaci_o_putovanjima = df
                     st.success(f"Putnik {izabran_putnik_za_izbacivanje} je uspešno izbačen iz datuma {izabran_dan_korekcija}!")
