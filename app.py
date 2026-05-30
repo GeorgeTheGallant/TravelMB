@@ -17,7 +17,7 @@ URL_POZADINE = "https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_15041
 css_za_pozadinu = f"""
 <style>
 .stApp {{
-    background-image: url("{https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_150416-scaled.jpg}");
+    background-image: url("https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_150416-scaled.jpg");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
