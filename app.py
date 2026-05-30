@@ -115,7 +115,7 @@ df = st.session_state.podaci_o_putovanjima
 if not df.empty:
     st.dataframe(df, use_container_width=True)
     
-    # --- SEKCIJA ZA IZBACIVANJE JEDNOG PO JEDNOG PUTNIKA (Sada ispravljeno) ---
+    # --- SEKCIJA ZA IZBACIVANJE JEDNOG PO JEDNOG PUTNIKA ---
     st.write("**🛠️ Brzo izbacivanje putnika iz tabele:**")
     
     col_izb_dan, col_izb_putnik, col_izb_dugme = st.columns([2, 2, 1])
@@ -157,13 +157,41 @@ if not df.empty:
                 
                 st.rerun()
 
-    # --- KOMPLETNO BRISANJE TABELE ---
-    st.write("  \n")
-    if st.button("💥 Isprazni celu tabelu", type="secondary"):
-        st.session_state.podaci_o_putovanjima = pd.DataFrame(
-            columns=["Datum", "Imena putnika", "Polazak", "Odlazak"]
-        )
-        st.rerun()
+    # --- SIGURNOSNA POTVRDA ZA BRISANJE CELE TABELE ---
+    st.write("---")
+    
+    # Inicijalizacija stanja da li je dugme kliknuto
+    if "prikazi_potvrdu" not in st.session_state:
+        st.session_state.prikazi_potvrdu = False
+
+    if not st.session_state.prikazi_potvrdu:
+        # Prvo normalno dugme
+        if st.button("💥 Isprazni celu tabelu", type="secondary"):
+            st.session_state.prikazi_potvrdu = True
+            st.rerun()
+    else:
+        # Otvara se sigurnosna zona kada neko klikne na dugme
+        st.warning("⚠️ **PAŽNJA:** Želite da obrišete kompletnu tabelu sa svim datumima. Ova akcija se ne može poništiti!")
+        
+        potvrda_cb = st.checkbox("Da, siguran sam da želim da obrišem sve podatke.")
+        
+        kol_potvrdi, kol_odustani = st.columns(2)
+        with kol_potvrdi:
+            if st.button("🔥 Trajno obriši sve", type="primary", use_container_width=True):
+                if potvrda_cb:
+                    st.session_state.podaci_o_putovanjima = pd.DataFrame(
+                        columns=["Datum", "Imena putnika", "Polazak", "Odlazak"]
+                    )
+                    st.session_state.prikazi_potvrdu = False
+                    st.success("Tabela je uspešno ispražnjena!")
+                    st.rerun()
+                else:
+                    st.error("Morate prvo štiklirati polje za potvrdu iznad!")
+                    
+        with kol_odustani:
+            if st.button("❌ Odustani", use_container_width=True):
+                st.session_state.prikazi_potvrdu = False
+                st.rerun()
 
     # --- EKSPORTOVANJE (EXCEL I PDF) ---
     st.subheader("📥 Preuzimanje fajlova")
