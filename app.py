@@ -75,6 +75,14 @@ header[data-testid="stHeader"] {{
     display: none !important;
 }}
 
+/* SAKRIVANJE GITHUB LOGOTIPA I CELOG DONJEG FUTERA ("Made with Streamlit") */
+footer {{
+    visibility: hidden !important;
+}}
+#MainMenu {{
+    visibility: hidden !important;
+}}
+
 /* Postavljanje fiksne pozadinske slike */
 .stApp {{
     background-image: url("https://gradjevinar.rs/wp-content/uploads/2025/11/20251006_150416-scaled.jpg");
